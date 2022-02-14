@@ -1,7 +1,15 @@
+# Misc
+.pypirc
+**/.DS_Store
+**/data/**
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+# R
+.Rhistory
 
 # C extensions
 *.so
