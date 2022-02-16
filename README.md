@@ -23,15 +23,16 @@ This code has the following dependencies:
 # Libraries
 import pandas as pd
 from autocrosswalk.main import AutoCrosswalk
+from autocrosswalk.utils import load_example_data
+
+# Load example data
+data = load_example_data()
 
 # Instantiate
 autocrosswalk = AutoCrosswalk(n_best_match=3,
                               prioritize_exact_match=True,
                               enforce_completeness=True,
                               verbose=2)
-
-# Load example data
-data = pd.read_parquet(path="autocrosswalk/data/data.parquet")
 
 # Separate into old and new data, i.e., we crosswalk the 'data_from' to 'data_to' 
 data_from = data.loc[data["DB"]=="db_20_0"]
