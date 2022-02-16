@@ -9,13 +9,11 @@ Author: Nicolaj Søndergaard Mühlbach (n.muhlbach at gmail dot com, muhlbach at
 
 ## Code dependencies
 This code has the following dependencies:
-
 - Python >=3.6
-- numpy >=1.19
 - pandas >=1.3
 
 ## Installation
-There are no heavy dependencies for this library to work. We have include an example that requires a parquet reader, e.g., `pyarrow`, `brotli`, or `fastparquet`. One needs to have one of them installed in order to use the example data provided.
+There are no heavy dependencies for this library to work. We have included an example that requires a parquet reader, e.g., `pyarrow`, `brotli`, or `fastparquet`. One needs to have one of them installed in order to use the example data provided.
 Otherwise, go ahead and install by `pip install autocrosswalk`.
 ## Usage
 
@@ -41,7 +39,6 @@ autocrosswalk = AutoCrosswalk(n_best_match=3,
 df_crosswalk = autocrosswalk.generate_crosswalk(df_from=data_from,
                                                 df_to=data_to,
                                                 numeric_key=['O*NET-SOC Code'],
-                                                numeric_type="categorical",
                                                 text_key=['Job title'])
 
 # Perform crosswalk
@@ -49,8 +46,12 @@ df_updated = autocrosswalk.perform_crosswalk(crosswalk=df_crosswalk,
                                              df=data_from,
                                              values=["Data Value"],
                                              by=['Date', 'DB',
-                                                 'Category', 'Element ID', 'Element Name',
-                                                 'Element description', 'Job description'])
+                                                 'Category', 'Element ID',
+                                                 'Element Name','Element description'])
+
+# Check if number of unique keys match
+print(len(df_updated["O*NET-SOC Code"].unique()) == len(data_to["O*NET-SOC Code"].unique()))
+print(len(df_updated["Job title"].unique()) == len(data_to["Job title"].unique()))
 
 # Now, 'df_updated' has all new keys from 'data_to'!
 ```

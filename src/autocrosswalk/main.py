@@ -355,7 +355,7 @@ class AutoCrosswalk(object):
                                    df_to,
                                    use_existing_transition_matrix=True,
                                    numeric_key=None,
-                                   numeric_type=None,
+                                   numeric_type="categorical",
                                    text_key=None):
         """
         Estimate transition probability
@@ -438,7 +438,7 @@ class AutoCrosswalk(object):
                            df_from,
                            df_to,
                            numeric_key=None,
-                           numeric_type=None,
+                           numeric_type="categorical",
                            text_key=None):
         """
         Prepare proper crosswalk file
@@ -553,6 +553,10 @@ class AutoCrosswalk(object):
         """
         Perform crosswalk
         """
+        # Check that prefix is not already in df
+        if any(prefix in c for c in df.columns):
+            raise Exception(f"'prefix' (='{prefix}') is not allowed to be part of column names in df: \n{df.columns.tolist()}" )
+        
         # Sanity check
         values = self.__fix_values(v=values)
         self._check_cols(df=df, cols=values)
