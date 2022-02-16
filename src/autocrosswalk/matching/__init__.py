@@ -3,3 +3,5 @@
 """
 __init__
 """
+from matching import (nlp,numeric_matching,text_matching)
+__all__ = [nlp,numeric_matching,text_matching]
