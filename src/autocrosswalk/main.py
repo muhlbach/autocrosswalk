@@ -132,6 +132,14 @@ class AutoCrosswalk(object):
         if not bg.tools.isin(a=cols, b=df.columns, how="all", return_element_wise=False):
             raise Exception(f"Some cols are not found in data. \nPresent columns: {df.columns.tolist()}. \nNecessary columns {cols}")
 
+    def _check_predix(self, prefix, df):
+        """
+        Check prefix
+        """
+        if not isinstance(prefix, str):
+            raise bg.exceptions.WrongInputTypeException(input_name="prefix",
+                                                        provided_input=prefix,
+                                                        allowed_inputs=str)
 
     def _prepare_transition_matrix(self,
                                    df_from,
@@ -253,25 +261,32 @@ class AutoCrosswalk(object):
         # -------------------------------------------------------------
         # Transition probability matrices
         # -------------------------------------------------------------
-        if self.verbose>1:
+        if self.verbose>2:
             bg.tools.print2("Estimating NUMERIC transition matrix")
         
         transition_matrix_numeric = self._compute_numeric_transition_prob(keys=numeric_key,
-                                                                                transition_matrix=transition_matrix_null)
-
-        if self.verbose>1:
-            bg.tools.print2("Estimating TEXT transition matrix")    
-        transition_matrix_text = self._compute_text_transition_prob(keys=text_key,
                                                                           transition_matrix=transition_matrix_null)
- 
-        if self.verbose>1:
-            bg.tools.print2("Estimating CONTEXT transition matrix")
-        transition_matrix_context = transition_matrix_null.copy() # Embedding similarity
+
+        # Check if each FROM_KEY has an exact numeric match. If this is the case, no need to compute transition matrix for text keys
+        has_exact_numeric_match = (transition_matrix_numeric==1).sum(axis=1)
+        
+        if has_exact_numeric_match.all():
+            transition_matrix_text = transition_matrix_null.copy()
+            transition_matrix_context = transition_matrix_null.copy()
+        else:
+            if self.verbose>2:
+                bg.tools.print2("Estimating TEXT transition matrix")    
+            transition_matrix_text = self._compute_text_transition_prob(keys=text_key,
+                                                                        transition_matrix=transition_matrix_null)
+     
+            if self.verbose>2:
+                bg.tools.print2("Estimating CONTEXT transition matrix")
+            transition_matrix_context = transition_matrix_null.copy() # Embedding similarity
          
-        # Sanity check
-        # if transition_matrix_numeric.index != transition_matrix_numeric.index
-        
-        
+        # Sanity check indices
+        if (transition_matrix_numeric.index != transition_matrix_numeric.index).any():
+            raise Exception("Numeric and text transition matrices have different indices")
+            
         # Combine transition matrices
         transition_matrix_average = transition_matrix_numeric + transition_matrix_text + transition_matrix_context
         
@@ -287,7 +302,7 @@ class AutoCrosswalk(object):
         
         return transition_matrix
 
-    def _find_exact_match(self,transition_matrix):
+    def _find_exact_match(self,transition_matrix,prioritize_numeric_match=True):
         
         """
         Find exact matches
@@ -297,11 +312,22 @@ class AutoCrosswalk(object):
                                                         provided_input=transition_matrix,
                                                         allowed_inputs=dict)
 
-        # Find exact matches
+        # Find exact matches by numeric and text keys
         mask_exact_numeric = transition_matrix["numeric"] >= 1-self.TOL
         mask_exact_text = transition_matrix["text"] >= 1-self.TOL
         
+        # Combine numeric and text
         mask_exact = mask_exact_numeric | mask_exact_text
+        
+        # If there are more than 1 exact match, it is typically because two codes have the same text label.
+        mask_double = mask_exact.sum(axis=1)>1
+        
+        # Thus, we overwrite the exact matches, but allow the user to choose between numeric or text matches
+        if mask_double.sum()>0:        
+            if prioritize_numeric_match:        
+                mask_exact.loc[mask_double] = mask_exact_numeric.loc[mask_double]
+            else:
+                mask_exact.loc[mask_double] = mask_exact_text.loc[mask_double]
         
         # Construct temporary matrix of exact matches (a series of dataframes)
         temp = mask_exact.apply(lambda x: x.index[x == True].to_frame(index=False), axis=1)
@@ -440,7 +466,8 @@ class AutoCrosswalk(object):
                            df_to,
                            numeric_key=None,
                            numeric_type="categorical",
-                           text_key=None):
+                           text_key=None,
+                           prefix="NEW "):
         """
         Prepare proper crosswalk file
         """
@@ -454,7 +481,8 @@ class AutoCrosswalk(object):
         
         self._check_cols(df=df_from,cols=numeric_key+text_key)
         self._check_cols(df=df_to,cols=numeric_key+text_key)
-
+        
+        self._check_predix(prefix=prefix, df=df_from)
         # ---------------------------------------------------------------------
         # Estimate transition proabability matrix
         # ---------------------------------------------------------------------
@@ -484,7 +512,6 @@ class AutoCrosswalk(object):
             
             crosswalks.append(crosswalk_exact)
             
-
         ## Find nbest matches
         # Mask those not found by now
         mask_find = crosswalk.isna().any(axis=1)
@@ -533,7 +560,7 @@ class AutoCrosswalk(object):
         df_crosswalk = pd.concat(objs=crosswalks) 
 
         # Update names
-        df_crosswalk.columns = [f"NEW {c}" for c in df_crosswalk.columns]
+        df_crosswalk.columns = [prefix+c for c in df_crosswalk.columns]
         
         # Reset index
         df_crosswalk.reset_index(inplace=True)
@@ -547,6 +574,7 @@ class AutoCrosswalk(object):
 
         return df_crosswalk
         
+    
         
     def perform_crosswalk(self,
                           crosswalk,
@@ -557,9 +585,7 @@ class AutoCrosswalk(object):
         """
         Perform crosswalk
         """
-        # Check that prefix is not already in df
-        if any(prefix in c for c in df.columns):
-            raise Exception(f"'prefix' (='{prefix}') is not allowed to be part of column names in df: \n{df.columns.tolist()}" )
+        self._check_predix(prefix=prefix, df=df)
         
         # Sanity check
         values = self.__fix_values(v=values)
@@ -602,7 +628,9 @@ class AutoCrosswalk(object):
                        text_key,
                        values,
                        by=None):
-        
+        """
+        Impute missing values by averaging closest matches 
+        """
         # Break link
         df = df.copy()
         
@@ -613,31 +641,34 @@ class AutoCrosswalk(object):
         # Mask missing
         mask_na = df[values].isna().any(axis=1)
         
-        # Subset
-        df_from = df.loc[~mask_na]
+        # Only impute in case of missingness
+        if mask_na.sum()>0:
+            
+            # Subset
+            df_from = df.loc[~mask_na]
+            
+            # Generate crosswalk
+            crosswalk = self.generate_crosswalk(df_from=df_from,
+                                                df_to=df,
+                                                numeric_key=numeric_key,
+                                                text_key=text_key)
+            
+            # Perform crosswalk
+            df_updated = self.perform_crosswalk(crosswalk=crosswalk,
+                                                df=df_from,
+                                                values=values,
+                                                by=by)
         
-        # Generate crosswalk
-        crosswalk = self.generate_crosswalk(df_from=df_from,
-                                            df_to=df,
-                                            numeric_key=numeric_key,
-                                            text_key=text_key)
         
-        # Perform crosswalk
-        df_updated = self.perform_crosswalk(crosswalk=crosswalk,
-                                            df=df_from,
-                                            values=values,
-                                            by=by)
-
-
-        # Set index
-        df.set_index(keys=self.by, inplace=True)
-        df_updated.set_index(keys=self.by, inplace=True)
-        
-        # Update
-        df.update(other=df_updated, overwrite=True)
-        
-        # Reset index
-        df.reset_index(drop=False, inplace=True)
+            # Set index
+            df.set_index(keys=self.by, inplace=True)
+            df_updated.set_index(keys=self.by, inplace=True)
+            
+            # Update
+            df.update(other=df_updated, overwrite=True)
+            
+            # Reset index
+            df.reset_index(drop=False, inplace=True)
         
         return df
     

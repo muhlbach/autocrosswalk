@@ -66,7 +66,7 @@ data_to = data.copy()
 self = autocrosswalk = AutoCrosswalk(n_best_match=3,
                               prioritize_exact_match=True,
                               enforce_completeness=True,
-                              verbose=2)
+                              verbose=3)
 
 # Generate crosswalk file
 df_crosswalk = autocrosswalk.generate_crosswalk(df_from=data_from,
