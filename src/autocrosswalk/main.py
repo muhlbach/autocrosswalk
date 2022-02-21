@@ -33,6 +33,7 @@ class AutoCrosswalk(object):
         self.has_all_keys = False
         self.unique_from = []
         self.unique_to = []
+
     # -------------------------------------------------------------------------
     # Class variables
     # -------------------------------------------------------------------------
@@ -489,11 +490,12 @@ class AutoCrosswalk(object):
         mask_find = crosswalk.isna().any(axis=1)
         mask_lookup = transition_matrix["average"].index.isin(crosswalk.loc[mask_find].index)
 
-        # Find nbest candidates
-        crosswalk_nbest = self._find_nbest_match(transition_matrix=transition_matrix["average"].loc[mask_lookup],
-                                                 n=self.n_best_match)
-
-        crosswalks.append(crosswalk_nbest)
+        if mask_lookup.sum()>0:
+            # Find nbest candidates
+            crosswalk_nbest = self._find_nbest_match(transition_matrix=transition_matrix["average"].loc[mask_lookup],
+                                                     n=self.n_best_match)
+    
+            crosswalks.append(crosswalk_nbest)
 
 
         if self.enforce_completeness:
@@ -515,15 +517,17 @@ class AutoCrosswalk(object):
             mask_find = crosswalk_to.isna().any(axis=1)
             mask_lookup = transition_matrix_to["average"].index.isin(crosswalk_to.loc[mask_find].index)
 
-            # Find nbest candidates
-            crosswalk_nbest_to_temp = self._find_nbest_match(transition_matrix=transition_matrix_to["average"].loc[mask_lookup],
-                                                     n=self.n_best_match)
+            if mask_lookup.sum()>0:
 
-            # Flip index and columns (not transport, but just swap)
-            crosswalk_nbest_to = crosswalk_nbest_to_temp.index.to_frame(index=False) 
-            crosswalk_nbest_to.index = pd.MultiIndex.from_frame(df=crosswalk_nbest_to_temp)
-
-            crosswalks.append(crosswalk_nbest_to)
+                # Find nbest candidates
+                crosswalk_nbest_to_temp = self._find_nbest_match(transition_matrix=transition_matrix_to["average"].loc[mask_lookup],
+                                                         n=self.n_best_match)
+    
+                # Flip index and columns (not transport, but just swap)
+                crosswalk_nbest_to = crosswalk_nbest_to_temp.index.to_frame(index=False) 
+                crosswalk_nbest_to.index = pd.MultiIndex.from_frame(df=crosswalk_nbest_to_temp)
+    
+                crosswalks.append(crosswalk_nbest_to)
             
         # Collect all crosswalks
         df_crosswalk = pd.concat(objs=crosswalks) 
@@ -566,7 +570,7 @@ class AutoCrosswalk(object):
         merge_cols.sort()
         
         # Fix by
-        by = self.__fix_by(by=by,cols=merge_cols)
+        self.by = self.__fix_by(by=by,cols=merge_cols)
         
         # Initial merge 
         df_merged = df.merge(right=crosswalk,
@@ -588,15 +592,52 @@ class AutoCrosswalk(object):
         df_merged.columns = [re.sub(pattern=prefix, repl="", string=c) for c in df_merged.columns]
 
         # Aggregate      
-        df_agg = df_merged.groupby(by=by,as_index=False,sort=True)[values].mean()
-
+        df_agg = df_merged.groupby(by=self.by,as_index=False,sort=True)[values].mean()
 
         return df_agg
         
+    def impute_missing(self,
+                       df,
+                       numeric_key,
+                       text_key,
+                       values,
+                       by=None):
         
+        # Break link
+        df = df.copy()
         
-        
-        
-        
+        # Sanity check
+        values = self.__fix_values(v=values)
+        self._check_cols(df=df, cols=values)
 
+        # Mask missing
+        mask_na = df[values].isna().any(axis=1)
         
+        # Subset
+        df_from = df.loc[~mask_na]
+        
+        # Generate crosswalk
+        crosswalk = self.generate_crosswalk(df_from=df_from,
+                                            df_to=df,
+                                            numeric_key=numeric_key,
+                                            text_key=text_key)
+        
+        # Perform crosswalk
+        df_updated = self.perform_crosswalk(crosswalk=crosswalk,
+                                            df=df_from,
+                                            values=values,
+                                            by=by)
+
+
+        # Set index
+        df.set_index(keys=self.by, inplace=True)
+        df_updated.set_index(keys=self.by, inplace=True)
+        
+        # Update
+        df.update(other=df_updated, overwrite=True)
+        
+        # Reset index
+        df.reset_index(drop=False, inplace=True)
+        
+        return df
+    
