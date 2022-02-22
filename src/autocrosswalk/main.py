@@ -410,10 +410,7 @@ class AutoCrosswalk(object):
                                                                  text_key=text_key,
                                                                  fill_value=0)
         
-        if use_existing_transition_matrix:
-            if self.verbose:
-                bg.tools.print2("Using existing transition matrix if all keys are present")
-                        
+        if use_existing_transition_matrix:                        
             # If we are using an existing transition matrix, we need to make sure that all unique keys are present
             # If not all keys are present, we overwrite exisiting transition matrix
             
@@ -434,7 +431,7 @@ class AutoCrosswalk(object):
             if not self.has_all_keys:
                 
                 if self.verbose:
-                    bg.exceptions.print_warning("Some keys are missing. Re-estimating transition matrix and overwriting existing")
+                    bg.exceptions.print_warning("Some keys are missing in existing transition matrix. \nRe-estimating transition matrix and overwriting existing")
                 
                 # Some keys are missing. Hence, we estimate transition matrices again
                 self.transition_matrix = self._estimate_transition_matrix(numeric_key=numeric_key,
@@ -445,7 +442,7 @@ class AutoCrosswalk(object):
                 self.unique_from = unique_from
                 self.unique_to = unique_to
 
-            # Get transition matric                
+            # Get transition matrix          
             transition_matrix = self.transition_matrix
                 
         else:
