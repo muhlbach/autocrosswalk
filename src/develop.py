@@ -30,20 +30,19 @@ data = load_example_data(which_data="default")
 data_from = data.loc[data["DB"]=="db_20_0"]
 data_to = data.loc[data["DB"]=="db_26_1"]
 
-
-
-
 # Instantiate
-autocrosswalk = AutoCrosswalk(n_best_match=3,
-                              prioritize_exact_match=True,
-                              enforce_completeness=True,
-                              verbose=2)
+self = autocrosswalk = AutoCrosswalk(n_best_match=3,
+                                     prioritize_exact_match=True,
+                                     enforce_completeness=True,
+                                     verbose=2)
 
 # Generate crosswalk file
 df_crosswalk = autocrosswalk.generate_crosswalk(df_from=data_from,
                                                 df_to=data_to,
                                                 numeric_key=['O*NET-SOC Code'],
-                                                text_key=['Job title'])
+                                                text_key=['Job title'],
+                                                context_key=["Job description"]
+                                                )
 
 # Perform crosswalk
 df_updated = autocrosswalk.perform_crosswalk(crosswalk=df_crosswalk,

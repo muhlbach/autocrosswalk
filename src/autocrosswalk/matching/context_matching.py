@@ -1,32 +1,32 @@
 #------------------------------------------------------------------------------
 # Libraries
 #------------------------------------------------------------------------------
-# Standard
-import pandas as pd
-import numpy as np
-import bodyguard as bg
+from econnlp.embedding.docs import DocumentEmbedder
 
 #------------------------------------------------------------------------------
 # Main
 #------------------------------------------------------------------------------
-class SomeClass(object):
+class ContextMatcher(DocumentEmbedder):
     """
-    Desc
+    Match context
     """
     # -------------------------------------------------------------------------
     # Constructor function
     # -------------------------------------------------------------------------
-    def __init__(self):
-        pass
-    # -------------------------------------------------------------------------
-    # Class variables
-    # -------------------------------------------------------------------------
-    
-    # -------------------------------------------------------------------------
-    # Private functions
-    # -------------------------------------------------------------------------
-    
+    def __init__(self, **kwargs):  
+        super().__init__(**kwargs)    
+
     # -------------------------------------------------------------------------
     # Public functions
     # -------------------------------------------------------------------------
-    
+    def compute_similarity(self,a,b,**kwargs):
+        """
+        Compute similarity between contexts
+        """
+        similarities = self.compute_similarity_between_two_embeddings(a=a,
+                                                                      b=b,
+                                                                      metric="cosine",
+                                                                      **kwargs)
+            
+        return similarities
+   

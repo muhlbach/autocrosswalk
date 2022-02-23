@@ -2,10 +2,7 @@
 # Libraries
 #------------------------------------------------------------------------------
 # Standard
-import pandas as pd
-import numpy as np
 import bodyguard as bg
-
 from difflib import SequenceMatcher
 #------------------------------------------------------------------------------
 # Main
