@@ -38,14 +38,15 @@ self = autocrosswalk = AutoCrosswalk(n_best_match=3,
                                      verbose=2)
 
 # Generate crosswalk file
-df_crosswalk3 = autocrosswalk.generate_crosswalk(df_from=data_from,
+df_crosswalk = autocrosswalk.generate_crosswalk(df_from=data_from,
                                                 df_to=data_to,
+                                                use_existing_transition_matrix=True,
                                                 numeric_key=['O*NET-SOC Code'],
                                                 text_key=['Job title'],
                                                 context_key=["Job description"],
-                                                weights={"numeric":0.25,
-                                                         "text":0.25,
-                                                         "context":0.5},
+                                                weights={"numeric":0.1,
+                                                         "text":0.1,
+                                                         "context":8},
                                                 )
 
 bg.tools.end_script(t0)

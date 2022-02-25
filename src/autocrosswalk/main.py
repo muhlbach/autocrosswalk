@@ -109,7 +109,11 @@ class AutoCrosswalk(object):
             else:
                 raise Exception(f"{key_name} key is provided but no weights is provided")
         else:
-            W[key_name] = 0
+            if key_name in W:
+                if W[key_name]>self.WEIGHT_THRES:
+                    raise Exception(f"{key_name} key is not provided but corresponding weight is too high (={W[key_name]}). Must be <={self.WEIGHT_THRES}")
+            else:
+                W[key_name] = 0
             
         return W    
         
@@ -666,6 +670,7 @@ class AutoCrosswalk(object):
                            text_key=None,
                            context_key=None,
                            weights=None,
+                           use_existing_transition_matrix=True,
                            prefix="NEW "):
         """
         Prepare proper crosswalk file
@@ -693,7 +698,7 @@ class AutoCrosswalk(object):
         # ---------------------------------------------------------------------
         transition_matrix = self.estimate_transition_matrix(df_from=df_from,
                                                             df_to=df_to,
-                                                            use_existing_transition_matrix=True,
+                                                            use_existing_transition_matrix=use_existing_transition_matrix,
                                                             numeric_key=numeric_key,
                                                             text_key=text_key,
                                                             context_key=context_key,
@@ -834,6 +839,7 @@ class AutoCrosswalk(object):
                        numeric_key=None,
                        text_key=None,
                        context_key=None,
+                       weights=None,
                        by=None):
         """
         Impute missing values by averaging closest matches 
@@ -859,14 +865,14 @@ class AutoCrosswalk(object):
                                                 df_to=df,
                                                 numeric_key=numeric_key,
                                                 text_key=text_key,
-                                                context_key=context_key)
+                                                context_key=context_key,
+                                                weights=weights)
             
             # Perform crosswalk
             df_updated = self.perform_crosswalk(crosswalk=crosswalk,
                                                 df=df_from,
                                                 values=values,
                                                 by=by)
-        
         
             # Set index
             df.set_index(keys=self.by, inplace=True)
