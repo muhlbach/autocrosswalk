@@ -224,8 +224,9 @@ class AutoCrosswalk(object):
         """
         # Generate unique
         all_keys = numeric_key+text_key+context_key
-        df_unique_from = df_from[all_keys].drop_duplicates()
-        df_unique_to = df_to[all_keys].drop_duplicates()
+        unique_keys = list(set(all_keys))
+        df_unique_from = df_from[unique_keys].drop_duplicates()
+        df_unique_to = df_to[unique_keys].drop_duplicates()
         
         # Empty transition matrix
         transition_matrix = pd.DataFrame(data=fill_value,
@@ -244,12 +245,10 @@ class AutoCrosswalk(object):
         """
         # Generate unique
         all_keys = numeric_key+text_key+context_key
-        df_unique = df[all_keys].drop_duplicates()
+        unique_keys = list(set(all_keys))
+        df_unique = df[unique_keys].drop_duplicates()
         
         # Empty transition matrix
-        crosswalk = pd.DataFrame(index=pd.MultiIndex.from_frame(df=df_unique,names=[f"FROM {c}" for c in df_unique.columns]),
-                                 columns=[f"TO {c}" for c in df_unique.columns])
-
         crosswalk = pd.DataFrame(index=pd.MultiIndex.from_frame(df=df_unique),
                                  columns=df_unique.columns)
         
@@ -714,7 +713,7 @@ class AutoCrosswalk(object):
                                             numeric_key=numeric_key,
                                             text_key=text_key,
                                             context_key=context_key)
-        
+                
         if self.prioritize_exact_match:
             # Find exact matches
             crosswalk_exact = self._find_exact_match(transition_matrix=transition_matrix)
@@ -762,6 +761,8 @@ class AutoCrosswalk(object):
                 crosswalk_nbest_to_temp = self._find_nbest_match(transition_matrix=transition_matrix_to["average"].loc[mask_lookup],
                                                          n=self.n_best_match)
     
+        
+    
                 # Flip index and columns (not transport, but just swap)
                 crosswalk_nbest_to = crosswalk_nbest_to_temp.index.to_frame(index=False) 
                 crosswalk_nbest_to.index = pd.MultiIndex.from_frame(df=crosswalk_nbest_to_temp)
@@ -770,7 +771,7 @@ class AutoCrosswalk(object):
             
         # Collect all crosswalks
         df_crosswalk = pd.concat(objs=crosswalks) 
-
+        
         # Update names
         df_crosswalk.columns = [prefix+c for c in df_crosswalk.columns]
         
@@ -781,7 +782,8 @@ class AutoCrosswalk(object):
         df_crosswalk.drop_duplicates(inplace=True)
         
         # Reindex
-        df_crosswalk.set_index(keys=numeric_key+text_key+context_key, inplace=True)
+        unique_keys = list(set(numeric_key+text_key+context_key))
+        df_crosswalk.set_index(keys=unique_keys, inplace=True)
         
         return df_crosswalk
         
@@ -859,7 +861,7 @@ class AutoCrosswalk(object):
             
             # Subset
             df_from = df.loc[~mask_na]
-            
+
             # Generate crosswalk
             crosswalk = self.generate_crosswalk(df_from=df_from,
                                                 df_to=df,

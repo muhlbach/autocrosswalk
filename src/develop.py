@@ -35,7 +35,7 @@ data_to = data.loc[data["DB"]=="db_26_1"]
 self = autocrosswalk = AutoCrosswalk(n_best_match=3,
                                      prioritize_exact_match=True,
                                      enforce_completeness=True,
-                                     verbose=2)
+                                     verbose=3)
 
 # Generate crosswalk file
 df_crosswalk = autocrosswalk.generate_crosswalk(df_from=data_from,
@@ -43,10 +43,10 @@ df_crosswalk = autocrosswalk.generate_crosswalk(df_from=data_from,
                                                 use_existing_transition_matrix=True,
                                                 numeric_key=['O*NET-SOC Code'],
                                                 text_key=['Job title'],
-                                                context_key=["Job description"],
+                                                context_key=['Job description'],
                                                 weights={"numeric":0.1,
                                                          "text":0.1,
-                                                         "context":8},
+                                                         "context":0.8},
                                                 )
 
 bg.tools.end_script(t0)
