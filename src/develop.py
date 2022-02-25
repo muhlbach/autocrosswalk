@@ -21,6 +21,7 @@ from autocrosswalk.tools import load_example_data
 #------------------------------------------------------------------------------
 # SETTINGS
 #------------------------------------------------------------------------------
+t0 = bg.tools.initialize_script()
 
 #------------------------------------------------------------------------------
 # DEFAULT DATA
@@ -37,12 +38,18 @@ self = autocrosswalk = AutoCrosswalk(n_best_match=3,
                                      verbose=2)
 
 # Generate crosswalk file
-df_crosswalk = autocrosswalk.generate_crosswalk(df_from=data_from,
+df_crosswalk3 = autocrosswalk.generate_crosswalk(df_from=data_from,
                                                 df_to=data_to,
                                                 numeric_key=['O*NET-SOC Code'],
                                                 text_key=['Job title'],
-                                                context_key=["Job description"]
+                                                context_key=["Job description"],
+                                                weights={"numeric":0.25,
+                                                         "text":0.25,
+                                                         "context":0.5},
                                                 )
+
+bg.tools.end_script(t0)
+bg.tools.stop()
 
 # Perform crosswalk
 df_updated = autocrosswalk.perform_crosswalk(crosswalk=df_crosswalk,
