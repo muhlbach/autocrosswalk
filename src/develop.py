@@ -21,15 +21,20 @@ from autocrosswalk.tools import load_example_data
 #------------------------------------------------------------------------------
 # SETTINGS
 #------------------------------------------------------------------------------
-t0 = bg.tools.initialize_script()
+t0 = bg.init.initialize_script()
 
+tiny_example = True
 #------------------------------------------------------------------------------
 # DEFAULT DATA
 #------------------------------------------------------------------------------
 # Load example data
 data = load_example_data(which_data="default")
-data_from = data.loc[data["DB"]=="db_20_0"]
-data_to = data.loc[data["DB"]=="db_26_1"]
+df_from = data.loc[data["DB"]=="db_20_0"]
+df_to = data.loc[data["DB"]=="db_26_1"]
+
+if tiny_example:
+    df_from = df_from.iloc[0:10000,:]
+    df_to = df_to.iloc[0:10000,:]
 
 # Instantiate
 self = autocrosswalk = AutoCrosswalk(n_best_match=3,
@@ -38,23 +43,23 @@ self = autocrosswalk = AutoCrosswalk(n_best_match=3,
                                      verbose=3)
 
 # Generate crosswalk file
-df_crosswalk = autocrosswalk.generate_crosswalk(df_from=data_from,
-                                                df_to=data_to,
+df_crosswalk = autocrosswalk.generate_crosswalk(df_from=df_from,
+                                                df_to=df_to,
                                                 use_existing_transition_matrix=True,
                                                 numeric_key=['O*NET-SOC Code'],
                                                 text_key=['Job title'],
                                                 context_key=['Job description'],
                                                 weights={"numeric":0.1,
                                                          "text":0.1,
-                                                         "context":0.8},
+                                                         "context":0.8}
                                                 )
 
-bg.tools.end_script(t0)
+bg.init.end_script(t0)
 bg.tools.stop()
 
 # Perform crosswalk
 df_updated = autocrosswalk.perform_crosswalk(crosswalk=df_crosswalk,
-                                             df=data_from,
+                                             df=df_from,
                                              values=["Data Value"],
                                              by=['Date', 'DB',
                                                  'Category', 'Element ID', 'Element Name','Element description'])

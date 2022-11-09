@@ -17,9 +17,12 @@ class TextMatcher(object):
     def __init__(self,
                  method="Ratcliff-Obershelp",
                  speed="slow",
+                 use_lower_characters=True,
                  ):
         self.method = method
         self.speed = speed
+        self.use_lower_characters = use_lower_characters
+        self.memory = {}
         
         if not bg.tools.isin(a=self.method, b=self.METHOD_OPT):
             bg.exceptions.WrongInputException(input_name="method",
@@ -33,20 +36,7 @@ class TextMatcher(object):
     
     # -------------------------------------------------------------------------
     # Private functions
-    # -------------------------------------------------------------------------
-    def _check_a(self, a):
-        if not isinstance(a,str):
-            raise bg.exceptions.WrongInputTypeException(input_name="a",
-                                                        provided_input=a,
-                                                        allowed_inputs=str)
-
-    def _check_b(self, b):
-        if not isinstance(b,list):
-            raise bg.exceptions.WrongInputTypeException(input_name="b",
-                                                        provided_input=b,
-                                                        allowed_inputs=list)
-
-    
+    # -------------------------------------------------------------------------    
     def _ratcliff_obershelp(self,a,b,speed="slow",isjunk=None,autojunk=True):
         
         
@@ -80,20 +70,45 @@ class TextMatcher(object):
         Compute similarity between string and each element in list
         """
         # Sanity checks
-        self._check_a(a=a)
-        self._check_b(b=b)
+        bg.sanity_check.check_type(x=a,allowed=str,name="a")
+        bg.sanity_check.check_type(x=b,allowed=list,name="b")
         
+        # Correction
+        if self.use_lower_characters:
+            a = a.lower()
+            b = [x.lower() for x in b]
+            
+        # Add to key if not present
+        if not a in self.memory:
+            self.memory[a] = {}
+            
+        # Find subset of b that needs to be estimated            
+        b_not_estimated = [x for x in b if x not in self.memory.get(a)]
+        
+        # Estimate similarities
         if self.method=="Ratcliff-Obershelp":
-            similarities = [self._ratcliff_obershelp(a=a,
-                                                     b=x,
-                                                     speed=self.speed,
-                                                     **kwargs) for x in b]
-            
-            
-        return similarities
-            
-            
+            similarities_estimated = {x: self._ratcliff_obershelp(a=a,
+                                                                  b=x,
+                                                                  speed=self.speed,
+                                                                  **kwargs) for x in b_not_estimated}
         
-# from diff_match_patch import diff_match_patch
-# P_temp[P_temp.index.get_level_values(key) == code_from] = [diff.diff_levenshtein(diffs=diff.diff_main(text1=code_from, text2=k)) / max(len(code_from),len(k)) for k in key_to]
+        # Increase memory
+        self.memory[a] = {**self.memory[a],
+                          **similarities_estimated}
+            
+        # Find similarities to be returned
+        similarities_returned = [self.memory[a][x] for x in b]
+            
+        # if self.method=="Ratcliff-Obershelp":
+        #     similarities = [self._ratcliff_obershelp(a=a,
+        #                                              b=x,
+        #                                              speed=self.speed,
+        #                                              **kwargs) for x in b]
+            
+        return similarities_returned
+            
+            
+        # This is way too slow!!!        
+        # from diff_match_patch import diff_match_patch
+        # P_temp[P_temp.index.get_level_values(key) == code_from] = [diff.diff_levenshtein(diffs=diff.diff_main(text1=code_from, text2=k)) / max(len(code_from),len(k)) for k in key_to]
         

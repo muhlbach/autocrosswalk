@@ -4,6 +4,7 @@
 # Standard
 import pandas as pd
 import bodyguard as bg
+from itertools import compress
 import re
 
 from .matching.text_matching import TextMatcher
@@ -36,8 +37,8 @@ class AutoCrosswalk(object):
         self.unique_to = []
         
         # Instantiate matchers
-        self.numericmatcher = NumericMatcher()
-        self.textmatcher = TextMatcher()
+        self.numericmatcher = NumericMatcher(remove_special_characters=True)
+        self.textmatcher = TextMatcher(use_lower_characters=True)
         self.contextmatcher = ContextMatcher(normalize=True,
                                              verbose=self.verbose,
                                              model_name_or_path="all-roberta-large-v1")
@@ -74,29 +75,27 @@ class AutoCrosswalk(object):
     
     
     def __fix_by(self,by,cols):        
-        if not isinstance(cols,list):
-            raise bg.exceptions.WrongInputTypeException(input_name="cols",
-                                                        provided_input=cols,
-                                                        allowed_inputs=list)
-        
+        """
+        Merge "by" and "cols" such that there are no repeated arguments
+        """
+        bg.sanity_check.check_type(x=cols, allowed=list,name="cols")
+
         if by is None:
             by = cols
-        elif isinstance(by, list):
+
+        bg.sanity_check.check_type(x=by, allowed=(list,str),name="by")
+  
+        if isinstance(by, list):          
+            # Exclude elements from cols in by
+            by = [x for x in by if not x in cols]
             
-            # Exclude elem from cols
-            by = [x for x in by if not bg.tools.isin(a=x, b=cols)]
-            
+            # Add all cols
             by += cols
-        elif isinstance(by, str):
-            
-            if bg.tools.isin(a=by, b=cols):
+        elif isinstance(by, str):            
+            if by in cols:
                 by = cols
             else:            
                 by = cols+[by]
-        else:
-            raise bg.exceptions.WrongInputTypeException(input_name="by",
-                                                        provided_input=by,
-                                                        allowed_inputs=[None, list, str])
         return by
     
     def __fix_W(self,key,key_name,W):
@@ -116,7 +115,11 @@ class AutoCrosswalk(object):
                 W[key_name] = 0
             
         return W    
-        
+
+    def __fix_mask_as_list(self, M):
+        if isinstance(M,bool):
+            M = [M]
+        return M        
     # -------------------------------------------------------------------------
     # Private functions
     # -------------------------------------------------------------------------
@@ -272,7 +275,8 @@ class AutoCrosswalk(object):
                 key_to = P.columns.get_level_values(level=key).tolist()
             
                 for k in key_from:
-                    P_temp[P_temp.index.get_level_values(key) == k] = self.numericmatcher.compute_similarity(a=k, b=key_to)
+                    P_temp[P_temp.index.get_level_values(key) == k] = self.numericmatcher.compute_similarity(a=k,
+                                                                                                             b=key_to)
                  
                 # Sanity check
                 if ((P_temp>1).any() | (P_temp<0).any()).any():
@@ -305,7 +309,8 @@ class AutoCrosswalk(object):
                 key_to = P.columns.get_level_values(level=key).tolist()
             
                 for k in key_from:
-                    P_temp[P_temp.index.get_level_values(key) == k] = self.textmatcher.compute_similarity(a=k, b=key_to)
+                    P_temp[P_temp.index.get_level_values(key) == k] = self.textmatcher.compute_similarity(a=k,
+                                                                                                          b=key_to)
                  
                 # Sanity check
                 if ((P_temp>1).any() | (P_temp<0).any()).any():
@@ -319,7 +324,7 @@ class AutoCrosswalk(object):
             P /= len(keys)
         
         return P
-    
+        
     def _compute_context_transition_prob(self,keys,transition_matrix):
         """
         Estimate transition probability matrix from context key
@@ -333,7 +338,7 @@ class AutoCrosswalk(object):
             new_keys = []
 
             for key in keys:
-                
+
                 # Get unique keys to be matched                
                 key_from = P.index.get_level_values(level=key).tolist()
                 key_to = P.columns.get_level_values(level=key).tolist()
@@ -361,12 +366,17 @@ class AutoCrosswalk(object):
                 # Get similarities                
                 similarities = self.contextmatcher.compute_similarity(a=key_from, b=key_to, metric="cosine")
 
-                # Replace entries in probability matrix            
-                P_temp.loc[bg.tools.isin(a=P_temp.index.get_level_values(level=key),
-                                         b=key_from),
-                           bg.tools.isin(a=P_temp.columns.get_level_values(level=key),
+                # Masks (must be list)
+                mask_idx = bg.tools.isin(a=P_temp.index.get_level_values(level=key),
+                                         b=key_from)
+                mask_idx = self.__fix_mask_as_list(M=mask_idx)
+        
+                mask_col = bg.tools.isin(a=P_temp.columns.get_level_values(level=key),
                                          b=key_to)
-                           ] = similarities.values
+                mask_col = self.__fix_mask_as_list(M=mask_col)
+
+                # Replace entries in probability matrix            
+                P_temp.loc[mask_idx,mask_col] = similarities.values
 
                 # Sanity check
                 if ((P_temp>1).any() | (P_temp<0).any()).any():
@@ -438,13 +448,13 @@ class AutoCrosswalk(object):
         transition_matrix_text = self._reindex_df(df=transition_matrix_text,
                                                   index=transition_matrix_null.index,
                                                   columns=transition_matrix_null.columns)
-            
+
+        # Check if each key has an exact match (either numeric or text). We only compute context similarity if no exact match is available
+        has_exact_numeric_text_match = (transition_matrix_numeric==1).sum(axis=1) + (transition_matrix_text==1).sum(axis=1)            
+        
         # ---------------------------------------------------------------------
         # CONTEXT transition probability matrix
         # ---------------------------------------------------------------------
-        # Check if each key has an exact match (either numeric or text). We only compute context similarity if no exact match is available
-        has_exact_numeric_text_match = (transition_matrix_numeric==1).sum(axis=1) + (transition_matrix_text==1).sum(axis=1)
-        
         if has_exact_numeric_text_match.all():
             # All keys have exact match. Thus, copy another transition matrix and fill with 1
             transition_matrix_context = transition_matrix_null.copy()
@@ -541,11 +551,17 @@ class AutoCrosswalk(object):
         # Subset temporaty
         temp = temp.loc[~mask_empty]
         
-        # Turn series of dataframes into dataframe by concatenating
-        exact = pd.concat(objs=temp.tolist())
-
-        # Fix index
-        exact.index = temp.index
+        if temp.tolist():
+        
+            # Turn series of dataframes into dataframe by concatenating
+            exact = pd.concat(objs=temp.tolist())
+    
+            # Fix index
+            exact.index = temp.index
+            
+        else:
+            exact = pd.DataFrame()
+        
 
         return exact
 
@@ -587,7 +603,7 @@ class AutoCrosswalk(object):
         """
         Estimate transition probability
         Note that if 'use_existing_transition_matrix=True', it means that we OVERWRITE existing transition matrices if they do not have ALL unique keys
-        """        
+        """              
         # ---------------------------------------------------------------------
         # Sanity checks
         # ---------------------------------------------------------------------
@@ -617,7 +633,7 @@ class AutoCrosswalk(object):
         
         if use_existing_transition_matrix:                        
             # If we are using an existing transition matrix, we need to make sure that all unique keys are present
-            # If not all keys are present, we overwrite exisiting transition matrix
+            # If not all keys are present, we extend exisiting transition matrix
             
             # Get current unique from and to
             unique_from = transition_matrix_null.index
@@ -631,13 +647,12 @@ class AutoCrosswalk(object):
                 self.has_all_keys = True
             else:
                 self.has_all_keys = False
-                
-
+            
             if not self.has_all_keys:
                 
                 if self.verbose:
                     bg.exceptions.print_warning("Some keys are missing in existing transition matrix. \nRe-estimating transition matrix and overwriting existing")
-                
+                                                                
                 # Some keys are missing. Hence, we estimate transition matrices again
                 self.transition_matrix = self._estimate_transition_matrix(numeric_key=numeric_key,
                                                                           text_key=text_key,
@@ -653,7 +668,7 @@ class AutoCrosswalk(object):
             transition_matrix = self.transition_matrix
                 
         else:
-            # Estimate new probability matrix
+            # Estimate new probability matrix (also used to enforce self-completeness)
             transition_matrix = self._estimate_transition_matrix(numeric_key=numeric_key,
                                                                  text_key=text_key,
                                                                  context_key=context_key,
@@ -670,10 +685,12 @@ class AutoCrosswalk(object):
                            context_key=None,
                            weights=None,
                            use_existing_transition_matrix=True,
+                           which_priority="numeric",
                            prefix="NEW "):
         """
         Prepare proper crosswalk file
         """
+
         # ---------------------------------------------------------------------
         # Sanity checks
         # ---------------------------------------------------------------------
@@ -683,8 +700,7 @@ class AutoCrosswalk(object):
         
         all_keys = numeric_key+text_key+context_key
         self._check_cols(df=df_from,cols=all_keys)
-        self._check_cols(df=df_to,cols=all_keys)
-        
+        self._check_cols(df=df_to,cols=all_keys)        
         self._check_prefix(prefix=prefix, df=df_from)
         
         # Check weights
@@ -692,6 +708,28 @@ class AutoCrosswalk(object):
                                       numeric_key=numeric_key,
                                       text_key=text_key,
                                       context_key=context_key)
+
+        # Fix priority if "prioritize_exact_match=True", but "which_priority" does not match a key!
+        if not numeric_key:
+            if which_priority=="numeric":
+                if text_key:
+                    which_priority = "text"
+                else:
+                    which_priority = "context"
+
+        if not text_key:
+            if which_priority=="text":
+                if numeric_key:
+                    which_priority = "numeric"
+                else:
+                    which_priority = "context"
+
+        if not context_key:
+            if which_priority=="context":
+                if numeric_key:
+                    which_priority = "numeric"
+                else:
+                    which_priority = "text"
         # ---------------------------------------------------------------------
         # Estimate transition proabability matrix
         # ---------------------------------------------------------------------
@@ -716,7 +754,8 @@ class AutoCrosswalk(object):
                 
         if self.prioritize_exact_match:
             # Find exact matches
-            crosswalk_exact = self._find_exact_match(transition_matrix=transition_matrix)
+            crosswalk_exact = self._find_exact_match(transition_matrix=transition_matrix,
+                                                     which_priority=which_priority)
             
             # Update existing crosswalk
             crosswalk.update(other=crosswalk_exact)
@@ -737,8 +776,19 @@ class AutoCrosswalk(object):
 
         if self.enforce_completeness:
             
-            # Transpose all transition matrices
-            transition_matrix_to = self._transpose_transition_matrix(transition_matrix=transition_matrix)
+            # enforcing completeness means to map the opposite way to (making sure that all new keys are represented!)
+            # Thus, start over. NOT enought to transpose transition matrix
+            
+            # Estimate new transition matrix
+            transition_matrix_to = self.estimate_transition_matrix(df_from=df_to,
+                                                                   df_to=df_from,
+                                                                   use_existing_transition_matrix=False,
+                                                                   numeric_key=numeric_key,
+                                                                   text_key=text_key,
+                                                                   context_key=context_key,
+                                                                   weights=weights)
+            
+            
             
             # Make sure that all keys in "df_to" are also matched
             crosswalk_to = self._prepare_crosswalk(df=df_to,
@@ -747,7 +797,8 @@ class AutoCrosswalk(object):
                                                    context_key=context_key)
                 
             # Find exact matches
-            crosswalk_exact_to = self._find_exact_match(transition_matrix=transition_matrix_to)
+            crosswalk_exact_to = self._find_exact_match(transition_matrix=transition_matrix_to,
+                                                        which_priority=which_priority)
             
             # Update existing crosswalk
             crosswalk_to.update(other=crosswalk_exact_to)
@@ -770,7 +821,7 @@ class AutoCrosswalk(object):
                 crosswalks.append(crosswalk_nbest_to)
             
         # Collect all crosswalks
-        df_crosswalk = pd.concat(objs=crosswalks) 
+        df_crosswalk = pd.concat(objs=crosswalks, axis=0) 
         
         # Update names
         df_crosswalk.columns = [prefix+c for c in df_crosswalk.columns]
@@ -799,14 +850,13 @@ class AutoCrosswalk(object):
         Perform crosswalk
         """
         self._check_prefix(prefix=prefix, df=df)
-        
+
         # Sanity check
         values = self.__fix_values(v=values)
         self._check_cols(df=df, cols=values)
         
         # Find columns to merge by
         merge_cols = list(crosswalk.index.names)
-        merge_cols.sort()
         
         # Fix by
         self.by = self.__fix_by(by=by,cols=merge_cols)
@@ -863,15 +913,15 @@ class AutoCrosswalk(object):
             df_from = df.loc[~mask_na]
 
             # Generate crosswalk
-            crosswalk = self.generate_crosswalk(df_from=df_from,
-                                                df_to=df,
-                                                numeric_key=numeric_key,
-                                                text_key=text_key,
-                                                context_key=context_key,
-                                                weights=weights)
+            self.crosswalk = self.generate_crosswalk(df_from=df_from,
+                                                     df_to=df,
+                                                     numeric_key=numeric_key,
+                                                     text_key=text_key,
+                                                     context_key=context_key,
+                                                     weights=weights)
             
             # Perform crosswalk
-            df_updated = self.perform_crosswalk(crosswalk=crosswalk,
+            df_updated = self.perform_crosswalk(crosswalk=self.crosswalk,
                                                 df=df_from,
                                                 values=values,
                                                 by=by)

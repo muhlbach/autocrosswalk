@@ -3,7 +3,7 @@
 #------------------------------------------------------------------------------
 # Standard
 import bodyguard as bg
-
+import re
 #------------------------------------------------------------------------------
 # Main
 #------------------------------------------------------------------------------
@@ -14,8 +14,10 @@ class NumericMatcher(object):
     # -------------------------------------------------------------------------
     # Constructor function
     # -------------------------------------------------------------------------
-    def __init__(self):
-        pass
+    def __init__(self,
+                 remove_special_characters=True):
+        self.remove_special_characters = remove_special_characters
+        self.memory = {}
         
     # -------------------------------------------------------------------------
     # Class variables
@@ -24,18 +26,6 @@ class NumericMatcher(object):
     # -------------------------------------------------------------------------
     # Private functions
     # -------------------------------------------------------------------------
-    def _check_a(self, a):
-        if not isinstance(a,str):
-            raise bg.exceptions.WrongInputTypeException(input_name="a",
-                                                        provided_input=a,
-                                                        allowed_inputs=str)
-
-    def _check_b(self, b):
-        if not isinstance(b,list):
-            raise bg.exceptions.WrongInputTypeException(input_name="b",
-                                                        provided_input=b,
-                                                        allowed_inputs=list)
-        
     def _compare_codes(self,a,b):
         # Adjust lenghs
         if len(a)==len(b):
@@ -68,12 +58,30 @@ class NumericMatcher(object):
         Compute similarity between string and each element in list
         """
         # Sanity checks
-        self._check_a(a=a)
-        self._check_b(b=b)
+        bg.sanity_check.check_type(x=a,allowed=str,name="a")
+        bg.sanity_check.check_type(x=b,allowed=list,name="b")
         
-        # Compute similarities for all elements in b
-        similarities = [self._compare_codes(a=a,b=x) for x in b]
+        if self.remove_special_characters:
+            a = re.sub('\W+','', a)
+            b = [re.sub('\W+','', x) for x in b]
             
-        return similarities
+        # Add to key if not present
+        if not a in self.memory:
+            self.memory[a] = {}
+            
+        # Find subset of b that needs to be estimated            
+        b_not_estimated = [x for x in b if x not in self.memory.get(a)]
+        
+        # Estimate similarities
+        similarities_estimated = {x: self._compare_codes(a=a,b=x) for x in b_not_estimated}
+        
+        # Increase memory
+        self.memory[a] = {**self.memory[a],
+                          **similarities_estimated}
+            
+        # Find similarities to be returned
+        similarities_returned = [self.memory[a][x] for x in b]
+                        
+        return similarities_returned    
             
         
